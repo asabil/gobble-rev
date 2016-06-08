@@ -73,22 +73,37 @@ const replace = (inputdir, outputdir, filename, replacements, skipRename) =>
 		return sander.writeFile(outputdir, newFilename, content).then(() => newFilename);
 	});
 
+const writeManifest = (outputdir, filename) => manifest =>
+	(filename)
+		? sander
+			.writeFile(outputdir, filename, JSON.stringify(manifest, null, 2))
+			.then(_ => manifest)
+		: manifest;
 
 module.exports = function rev(inputdir, outputdir, options) {
 	const skipRename = options.skipRename || ['index.html'];
 	const skipFindDeps = options.skipFindDeps || ['*.png', '*.jpg', '*.jpeg', '*.gif'];
+	const manifestFilename = options.manifest || null;
 
 	return sander.lsr(inputdir).then(filenames =>
 		buildDepsMap(inputdir, filenames, skipFindDeps, skipRename).then(allDeps => {
 			const refs = new Map();
 
 			return mapSeries(toposort(allDeps), filename => {
-				const deps = allDeps.get(filename);
-				const replacements = new Map(deps.map(dep => [dep, refs.get(dep)]));
-				return replace(inputdir, outputdir, filename, replacements, skipRename).then(newFilename => {
-					refs.set(filename, newFilename);
-					return newFilename;
-				});
-			});
+					const deps = allDeps.get(filename);
+					const replacements = new Map(deps.map(dep => [dep, refs.get(dep)]));
+					return replace(inputdir, outputdir, filename, replacements, skipRename).then(newFilename => {
+						refs.set(filename, newFilename);
+						return newFilename;
+					});
+				})
+				.then(_newFilenames => {
+					const manifest = Object.create(null);
+					for (let [k, v] of refs) {
+						manifest[k] = v;
+					}
+					return manifest;
+				})
+				.then(writeManifest(outputdir, manifestFilename));
 		}));
 };
